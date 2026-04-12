@@ -7,14 +7,14 @@ import logging
 
 logging.getLogger("streamlit").setLevel(logging.ERROR)
 
-# ---------------- PAGE CONFIG ----------------
+# PAGE CONFIG
 st.set_page_config(page_title="Stock Dashboard", layout="wide")
 
-# ---------------- TITLE ----------------
+#TITLE
 st.markdown("<h1 style='text-align:center;'>Live Stock Market Dashboard</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align:center; color:gray;'>Real-Time Market Intelligence</p>", unsafe_allow_html=True)
 
-# ---------------- SIDEBAR ----------------
+#SIDEBAR
 st.sidebar.header("Stock Settings")
 
 popular_stocks = {
@@ -58,7 +58,7 @@ period = st.sidebar.selectbox(
 # Supported conversion currencies (add more as needed)
 CONVERTIBLE_CURRENCIES = {"USD", "GBP", "EUR", "JPY", "HKD", "SGD"}
 
-# ---------------- DATA FETCH ----------------
+#DATA FETCH
 @st.cache_data(ttl=300)
 def get_fx_rate(from_currency: str, period_str: str) -> pd.Series:
     """Fetch close prices for a currency pair against INR."""
@@ -151,7 +151,7 @@ if failed_tickers:
         "Please check that the symbols are correct."
     )
 
-# ---------------- DASHBOARD ----------------
+#DASHBOARD
 if not data:
     st.error("No valid data to display. Please check your ticker selection.")
     st.stop()
@@ -168,7 +168,7 @@ elif len(data) == 1:
 
     st.markdown(f"<h2 style='text-align:center;'>{ticker} Market Overview</h2>", unsafe_allow_html=True)
 
-    # ---- Metrics ----
+    # Metrics
     col1, col2, col3, col4 = st.columns(4)
     latest_close = df["Close"].iloc[-1]
     prev_close = df["Close"].iloc[-2] if len(df) > 1 else latest_close
@@ -181,7 +181,7 @@ elif len(data) == 1:
 
     st.markdown("---")
 
-    # ---- Candlestick Chart ----
+    #Candlestick Chart
     st.subheader("Price Action")
     fig_candle = go.Figure(
         data=[
@@ -202,7 +202,7 @@ elif len(data) == 1:
     )
     st.plotly_chart(fig_candle, use_container_width=True)
 
-    # ---- Moving Averages ----
+    # Moving Averages
     st.subheader("Trend Indicators (Moving Averages)")
     fig_ma = go.Figure()
     fig_ma.add_trace(go.Scatter(x=df.index, y=df["Close"], name="Close", line=dict(width=2)))
@@ -215,12 +215,12 @@ elif len(data) == 1:
     )
     st.plotly_chart(fig_ma, use_container_width=True)
 
-    # ---- Volume ----
+    # Volume
     st.subheader("Volume Analysis")
     fig_vol = px.bar(df, x=df.index, y="Volume", template="plotly_dark")
     st.plotly_chart(fig_vol, use_container_width=True)
 
-    # ---- Daily Returns ----
+    #Daily Returns
     st.subheader("Daily Returns (%)")
     fig_ret = px.line(df, x=df.index, y="Daily Return", template="plotly_dark")
     fig_ret.update_layout(yaxis_tickformat=".2%")
@@ -229,7 +229,7 @@ elif len(data) == 1:
 else:
     st.markdown("<h2 style='text-align:center;'>Multi-Stock Comparison</h2>", unsafe_allow_html=True)
 
-    # ---- Metrics Grid ----
+    #Metrics Grid
     cols = st.columns(min(len(data), 4))
     for i, (ticker, df) in enumerate(data.items()):
         col_idx = i % 4
@@ -243,7 +243,7 @@ else:
 
     st.markdown("---")
 
-    # ---- Normalized Comparison Chart ----
+    # Normalized Comparison Chart
     st.subheader("Normalized Performance (%)")
     fig_comp = go.Figure()
     for ticker, df in data.items():
@@ -261,7 +261,7 @@ else:
     )
     st.plotly_chart(fig_comp, use_container_width=True)
 
-    # ---- Absolute Price Comparison Chart ----
+    # Absolute Price Comparison Chart
     st.subheader("Absolute Price Comparison (₹ / Converted)")
     fig_abs = go.Figure()
     for ticker, df in data.items():
