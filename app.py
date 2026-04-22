@@ -360,9 +360,7 @@ if len(data) == 1:
     st.plotly_chart(fig_r, use_container_width=True)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
 # MULTI-STOCK COMPARISON VIEW
-# ══════════════════════════════════════════════════════════════════════════════
 else:
     st.markdown("<h2 style='text-align:center;'>Multi-Stock Comparison</h2>", unsafe_allow_html=True)
 
