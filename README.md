@@ -1,56 +1,110 @@
-# 📊 Live Stock Market Dashboard
+# 📈 Live Stock Market Dashboard
 
-A real-time stock market dashboard built using **Streamlit** that provides interactive charts, technical indicators, and market insights.
+An AI-powered real-time stock market dashboard built with **Streamlit**, **yFinance**, and **Groq LLM**.
 
----
-
-## 🚀 Features
-
-* 📈 Real-time stock data using Yahoo Finance
-* 🕯️ Candlestick charts for price analysis
-* 📊 Moving averages (50 & 200)
-* 📉 Daily returns visualization
-* 📦 Volume analysis
-* 🔍 Support for custom stock tickers
+Search any company by name — the AI finds the ticker automatically. Get live charts, technical indicators, and an AI-generated market summary.
 
 ---
 
-## 🛠 Tech Stack
+## ✨ Features
 
-* Python
-* Streamlit
-* Pandas
-* Plotly
-* yFinance
-
----
-
-## 📸 Preview
-
-### 🏠 Dashboard Overview
-
-![Dashboard](images/dashboard.png)
-
-### 📈 Price Action (Candlestick Chart)
-
-![Price Action](images/price-action.png)
-
-### 📊 Trend Indicators
-
-![Trend Indicators](images/trend-indicators.png)
-
-### 📉 Daily Returns
-
-![Daily Returns](images/daily-returns.png)
+- 🤖 **AI Ticker Search** — Type any company name (e.g. "Tata Motors", "Netflix") and Groq LLM finds the correct ticker symbol automatically
+- 📝 **AI Stock Summary** — LLM generates a 3-4 sentence analysis of the stock's recent performance and trend
+- 🕯️ **Candlestick Charts** — Interactive price action visualization
+- 📊 **Moving Averages** — 50-day and 200-day trend indicators
+- 📉 **Daily Returns** — Percentage return chart over time
+- 📦 **Volume Analysis** — Trading volume bar chart
+- 🌍 **Multi-Stock Comparison** — Normalized performance and absolute price comparison
+- 💱 **INR Conversion** — Foreign stocks automatically converted to Indian Rupees
+- 🔄 **Auto Retry** — Handles Yahoo Finance rate limiting with smart retry logic
 
 ---
 
-## ▶️ Run Locally
+## 🛠️ Tech Stack
 
+| Tool | Purpose |
+|---|---|
+| Streamlit | Web app framework |
+| yFinance | Stock data fetching |
+| Groq (Llama 3.3 70B) | AI ticker search + summary |
+| Plotly | Interactive charts |
+| Pandas | Data processing |
+| python-dotenv | Local environment variables |
+
+---
+
+## 🚀 Run Locally
+
+**1. Clone the repo**
+```bash
+git clone https://github.com/ayushdwd00/stockmarketapi.git
+cd stockmarketapi
+```
+
+**2. Install dependencies**
 ```bash
 pip install -r requirements.txt
+```
+
+**3. Add your Groq API key**
+
+Create a `.env` file in the project root:
+```
+GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxx
+```
+Get your free API key at [console.groq.com](https://console.groq.com)
+
+**4. Run the app**
+```bash
 streamlit run app.py
 ```
+
+---
+
+## ☁️ Deploy on Streamlit Cloud
+
+1. Push your code to GitHub (`.env` is gitignored — never committed)
+2. Go to [share.streamlit.io](https://share.streamlit.io) and connect your repo
+3. Go to **App Settings → Secrets** and add:
+```toml
+GROQ_API_KEY = "gsk_xxxxxxxxxxxxxxxx"
+```
+4. Deploy 🚀
+
+---
+
+## 🔍 Example Searches
+
+| Type | Company Name | Ticker |
+|---|---|---|
+| 🇮🇳 Indian | Tata Motors | TATAMOTORS.NS |
+| 🇮🇳 Indian | State Bank of India | SBIN.NS |
+| 🇮🇳 Indian | Zomato | ZOMATO.NS |
+| 🇮🇳 Indian | Bajaj Finance | BAJFINANCE.NS |
+| 🇺🇸 US | Google | GOOGL |
+| 🇺🇸 US | Netflix | NFLX |
+| 🇺🇸 US | Palantir | PLTR |
+
+---
+
+## 📁 Project Structure
+
+```
+stockmarketapi/
+├── app.py              # Main Streamlit app
+├── requirements.txt    # Python dependencies
+├── .env                # Local API keys (gitignored)
+├── .gitignore          # Ignores .env and secrets
+└── README.md           # This file
+```
+
+---
+
+## ⚠️ Known Limitations
+
+- Yahoo Finance may rate-limit requests on shared IPs — click **🔄 Refresh Data** to retry
+- AI ticker search requires a valid Groq API key
+- Some very small-cap or newly listed stocks may not be available on yFinance
 
 ---
 
@@ -62,4 +116,4 @@ streamlit run app.py
 
 ## ⭐ Show Your Support
 
-If you like this project, give it a ⭐ on GitHub!
+If you found this useful, give it a ⭐ on GitHub!
