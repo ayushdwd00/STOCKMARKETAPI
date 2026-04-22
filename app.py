@@ -12,10 +12,10 @@ from groq import Groq
 load_dotenv()
 logging.getLogger("streamlit").setLevel(logging.ERROR)
 
-# ── PAGE CONFIG ────────────────────────────────────────────────────────────────
+# PAGE CONFIG
 st.set_page_config(page_title="Stock Dashboard", layout="wide")
 
-# ── GROQ CLIENT ────────────────────────────────────────────────────────────────
+# GROQ CLIENT
 api_key = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY")
 if not api_key:
     st.error("⚠️ GROQ_API_KEY not found. Add it to your .env file or Streamlit Secrets.")
@@ -23,15 +23,19 @@ if not api_key:
 
 client = Groq(api_key=api_key)
 
-# ── SESSION STATE ──────────────────────────────────────────────────────────────
+# SESSION STATE
 if "primary_ticker" not in st.session_state:
     st.session_state.primary_ticker = None       # first / main stock
 if "comparison_tickers" not in st.session_state:
     st.session_state.comparison_tickers = []     # additional stocks for comparison
 if "llm_cache" not in st.session_state:
     st.session_state.llm_cache = {}              # company name → ticker cache
+if "pending_ticker" not in st.session_state:
+    st.session_state.pending_ticker = None       # temporarily holds searched ticker
+if "pending_comp_ticker" not in st.session_state:
+    st.session_state.pending_comp_ticker = None  # temporarily holds searched comparison ticker
 
-# ── POPULAR STOCKS ─────────────────────────────────────────────────────────────
+# POPULAR STOCKS
 POPULAR_STOCKS = {
     "AAPL  — Apple":            "AAPL",
     "TSLA  — Tesla":            "TSLA",
@@ -49,7 +53,7 @@ POPULAR_STOCKS = {
 
 CONVERTIBLE_CURRENCIES = {"USD", "GBP", "EUR", "JPY", "HKD", "SGD"}
 
-# ── LLM HELPERS ────────────────────────────────────────────────────────────────
+# LLM HELPERS
 def get_ticker_from_llm(company_name: str) -> str:
     if company_name in st.session_state.llm_cache:
         return st.session_state.llm_cache[company_name]
@@ -104,7 +108,7 @@ Summary:"""
         return f"Could not generate summary: {e}"
 
 
-# ── DATA FETCHING ──────────────────────────────────────────────────────────────
+# DATA FETCHING
 @st.cache_data(ttl=300)
 def get_fx_rate(from_currency: str, period_str: str) -> pd.Series:
     fx_map = {
@@ -170,12 +174,12 @@ def load_data(ticker_list: tuple, time_period: str):
     return data_dict, failed, currencies
 
 
-# ── SIDEBAR ────────────────────────────────────────────────────────────────────
+# SIDEBAR
 st.sidebar.markdown("## 📈 Stock Settings")
 st.sidebar.markdown("---")
 
-# ── 1) UNIFIED SEARCH BAR ─────────────────────────────────────────────────────
-st.sidebar.markdown("#### Search Stock")
+# 1) PRIMARY STOCK SEARCH
+st.sidebar.markdown("#### Search Primary Stock")
 
 popular_labels = list(POPULAR_STOCKS.keys())
 popular_tickers = list(POPULAR_STOCKS.values())
@@ -195,33 +199,42 @@ suggestion = st.sidebar.selectbox(
     format_func=lambda x: "— choose a popular stock —" if x == "" else x,
 )
 
-if st.sidebar.button("🔍 Search / Add Stock", use_container_width=True):
+if st.sidebar.button("🔍 Search Stock", use_container_width=True):
     raw = search_input.strip() or (POPULAR_STOCKS.get(suggestion, "") if suggestion else "")
     if raw:
-        # Check if it looks like a ticker (short, no spaces) or a company name
-        if len(raw.split()) == 1 and raw.replace(".", "").isalpha():
-            resolved = raw.upper()
+        if raw.isupper() and (len(raw) <= 5 or ".NS" in raw):
+            resolved = raw
         else:
             with st.spinner(f"Looking up '{raw}'…"):
                 resolved = get_ticker_from_llm(raw)
 
         if resolved:
-            if st.session_state.primary_ticker is None:
-                st.session_state.primary_ticker = resolved
-                st.sidebar.success(f"✅ Primary: **{resolved}**")
-            elif resolved not in st.session_state.comparison_tickers and resolved != st.session_state.primary_ticker:
-                st.session_state.comparison_tickers.append(resolved)
-                st.sidebar.success(f"✅ Added to comparison: **{resolved}**")
-            else:
-                st.sidebar.info(f"**{resolved}** is already added.")
+            st.session_state.pending_ticker = resolved
         else:
             st.sidebar.error("Could not resolve ticker. Try the exact ticker symbol.")
+            st.session_state.pending_ticker = None
     else:
         st.sidebar.warning("Please type a ticker or select from the list.")
 
+if st.session_state.pending_ticker:
+    pt = st.session_state.pending_ticker
+    st.sidebar.success(f"✅ Found Ticker: **{pt}**")
+    
+    if pt == st.session_state.primary_ticker:
+        st.sidebar.info("This is already your primary stock.")
+        if st.sidebar.button("Clear Search", key="clear_search", use_container_width=True):
+            st.session_state.pending_ticker = None
+            st.rerun()
+    else:
+        if st.sidebar.button("📊 Analyze Stock", type="primary", use_container_width=True):
+            st.session_state.primary_ticker = pt
+            st.session_state.comparison_tickers = []  # Reset comparisons when switching primary stock
+            st.session_state.pending_ticker = None
+            st.rerun()
+
 st.sidebar.markdown("---")
 
-# ── 2) TIME FRAME ──────────────────────────────────────────────────────────────
+# 2) TIME FRAME
 st.sidebar.markdown("#### Time Frame")
 period = st.sidebar.radio(
     "Select period",
@@ -233,14 +246,13 @@ period = st.sidebar.radio(
 
 st.sidebar.markdown("---")
 
-# ── 3) COMPARISON PANEL (active only after first stock added) ──────────────────
-st.sidebar.markdown("#### Comparison")
+# 3) COMPARISON PANEL
+st.sidebar.markdown("#### Compare Stocks")
 
 if st.session_state.primary_ticker is None:
-    st.sidebar.caption("🔒 Search a stock first to enable comparison.")
+    st.sidebar.caption("🔒 *Add comparison (active after first search)*")
 else:
-    primary = st.session_state.primary_ticker
-    st.sidebar.markdown(f"**Primary:** `{primary}`")
+    st.sidebar.markdown(f"**Primary:** `{st.session_state.primary_ticker}`")
 
     if st.session_state.comparison_tickers:
         st.sidebar.markdown("**Comparing with:**")
@@ -250,21 +262,54 @@ else:
             if col2.button("✕", key=f"remove_{t}"):
                 st.session_state.comparison_tickers.remove(t)
                 st.rerun()
-    else:
-        st.sidebar.caption("Search another stock above to compare.")
 
-    if st.sidebar.button("🗑️ Clear All", use_container_width=True):
-        st.session_state.primary_ticker = None
-        st.session_state.comparison_tickers = []
-        st.rerun()
+    with st.sidebar.expander("➕ Add Stock for Comparison", expanded=False):
+        comp_input = st.text_input("Type ticker or name", key="comp_in")
+        comp_sug = st.selectbox("Or pick from popular stocks", options=[""] + popular_labels, index=0, format_func=lambda x: "— choose —" if x == "" else x, key="comp_sug")
+        
+        if st.button("🔍 Search Comparison", use_container_width=True):
+            c_raw = comp_input.strip() or (POPULAR_STOCKS.get(comp_sug, "") if comp_sug else "")
+            if c_raw:
+                if c_raw.isupper() and (len(c_raw) <= 5 or ".NS" in c_raw):
+                    c_res = c_raw
+                else:
+                    with st.spinner(f"Looking up '{c_raw}'…"):
+                        c_res = get_ticker_from_llm(c_raw)
+                if c_res:
+                    st.session_state.pending_comp_ticker = c_res
+                else:
+                    st.error("Could not resolve ticker.")
+                    st.session_state.pending_comp_ticker = None
+            else:
+                st.warning("Please type a ticker.")
+                
+        if st.session_state.get("pending_comp_ticker"):
+            c_pt = st.session_state.pending_comp_ticker
+            st.success(f"✅ Found Ticker: **{c_pt}**")
+            
+            if c_pt == st.session_state.primary_ticker or c_pt in st.session_state.comparison_tickers:
+                st.info("Already added to dashboard.")
+                if st.button("Clear Search", key="clear_comp"):
+                    st.session_state.pending_comp_ticker = None
+                    st.rerun()
+            else:
+                if st.button("➕ Add to Comparison", type="primary", use_container_width=True):
+                    st.session_state.comparison_tickers.append(c_pt)
+                    st.session_state.pending_comp_ticker = None
+                    st.rerun()
+                    
+    if st.session_state.comparison_tickers:
+        if st.sidebar.button("🗑️ Clear Comparisons", use_container_width=True):
+            st.session_state.comparison_tickers = []
+            st.rerun()
 
-# ── REFRESH ────────────────────────────────────────────────────────────────────
+# REFRESH
 st.sidebar.markdown("---")
 if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
     st.cache_data.clear()
     st.rerun()
 
-# ── BUILD TICKER LIST ──────────────────────────────────────────────────────────
+# BUILD TICKER LIST
 if st.session_state.primary_ticker is None:
     st.markdown("<h1 style='text-align:center;'>📊 Live Stock Market Dashboard</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align:center;color:gray;'>Search a stock in the sidebar to get started.</p>", unsafe_allow_html=True)
@@ -272,7 +317,7 @@ if st.session_state.primary_ticker is None:
 
 all_tickers = [st.session_state.primary_ticker] + st.session_state.comparison_tickers
 
-# ── FETCH DATA ─────────────────────────────────────────────────────────────────
+# FETCH DATA
 data, failed_tickers, stock_currencies = load_data(tuple(all_tickers), period)
 
 if failed_tickers:
@@ -282,13 +327,13 @@ if not data:
     st.error("No valid data. Click 🔄 Refresh.")
     st.stop()
 
-# ── PAGE HEADER ────────────────────────────────────────────────────────────────
+# PAGE HEADER
 st.markdown("<h1 style='text-align:center;'>📊 Live Stock Market Dashboard</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align:center;color:gray;'>Real-Time Market Intelligence</p>", unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════════════════
+#
 # SINGLE STOCK VIEW
-# ══════════════════════════════════════════════════════════════════════════════
+#
 if len(data) == 1:
     ticker = list(data.keys())[0]
     df = data[ticker]
@@ -364,7 +409,7 @@ if len(data) == 1:
 else:
     st.markdown("<h2 style='text-align:center;'>Multi-Stock Comparison</h2>", unsafe_allow_html=True)
 
-    # ── Metric cards ──────────────────────────────────────────────────────────
+    # Metric cards
     cols = st.columns(min(len(data), 4))
     for i, (ticker, df) in enumerate(data.items()):
         close  = df["Close"].iloc[-1]
@@ -375,7 +420,7 @@ else:
 
     st.markdown("---")
 
-    # ── Normalized performance ────────────────────────────────────────────────
+    # Normalized performance
     st.subheader("📈 Normalized Performance (%)")
     fig_norm = go.Figure()
     for ticker, df in data.items():
@@ -387,7 +432,7 @@ else:
                            hovermode="x unified", height=500)
     st.plotly_chart(fig_norm, use_container_width=True)
 
-    # ── Absolute price ────────────────────────────────────────────────────────
+    # Absolute price
     st.subheader("💰 Absolute Price (₹ / Converted)")
     fig_abs = go.Figure()
     for ticker, df in data.items():
@@ -396,7 +441,7 @@ else:
                           hovermode="x unified")
     st.plotly_chart(fig_abs, use_container_width=True)
 
-    # ── Volume comparison ─────────────────────────────────────────────────────
+    # Volume comparison
     st.subheader("📊 Volume Comparison")
     fig_vol = go.Figure()
     for ticker, df in data.items():
@@ -405,7 +450,7 @@ else:
                           yaxis_title="Volume", hovermode="x unified")
     st.plotly_chart(fig_vol, use_container_width=True)
 
-    # ── Correlation heatmap ───────────────────────────────────────────────────
+    # Correlation heatmap
     if len(data) >= 2:
         st.subheader("🔗 Price Correlation Heatmap")
         closes = pd.DataFrame({t: df["Close"] for t, df in data.items()})
@@ -422,7 +467,7 @@ else:
         fig_corr.update_layout(template="plotly_dark", height=400)
         st.plotly_chart(fig_corr, use_container_width=True)
 
-    # ── Daily returns comparison ──────────────────────────────────────────────
+    # Daily returns comparison
     st.subheader("📉 Daily Returns Comparison (%)")
     fig_ret = go.Figure()
     for ticker, df in data.items():
@@ -432,7 +477,7 @@ else:
                           hovermode="x unified")
     st.plotly_chart(fig_ret, use_container_width=True)
 
-    # ── Summary stats table ───────────────────────────────────────────────────
+    # Summary stats table
     st.subheader("📋 Summary Statistics")
     rows = []
     for ticker, df in data.items():
