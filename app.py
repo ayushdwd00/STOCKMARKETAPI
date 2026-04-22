@@ -9,14 +9,14 @@ import os
 from dotenv import load_dotenv
 from groq import Groq
 
-load_dotenv()  # loads .env locally
+load_dotenv()
 
 logging.getLogger("streamlit").setLevel(logging.ERROR)
 
 # PAGE CONFIG
 st.set_page_config(page_title="Stock Dashboard", layout="wide")
 
-# GROQ CLIENT — works both locally (.env) and on Streamlit Cloud (secrets)
+# GROQ CLIENT
 api_key = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY")
 if not api_key:
     st.error("⚠️ GROQ_API_KEY not found. Add it to your .env file (local) or Streamlit Secrets (cloud).")
@@ -24,9 +24,14 @@ if not api_key:
 
 client = Groq(api_key=api_key)
 
+# SESSION STATE INIT
+if "llm_tickers" not in st.session_state:
+    st.session_state.llm_tickers = []  # tickers added via LLM search
+if "last_search" not in st.session_state:
+    st.session_state.last_search = ""  # last searched company name
+
 
 def get_ticker_from_llm(company_name: str) -> str:
-    """Use Groq LLM to find the correct stock ticker for a company name."""
     prompt = f"""You are a stock market expert. Given a company name, return ONLY the correct stock ticker symbol.
 Rules:
 - For Indian stocks: use NSE format with .NS suffix (e.g. RELIANCE.NS, TCS.NS, INFY.NS, TATAMOTORS.NS)
@@ -52,7 +57,6 @@ Ticker:"""
 def get_ai_summary(ticker: str, latest_close: float, period_high: float,
                    period_low: float, avg_volume: float, pct_change: float,
                    last_10_closes: list, period: str) -> str:
-    """Use Groq LLM to generate a short stock summary paragraph."""
     prompt = f"""You are a financial analyst. Based on the following stock data, write a 3-4 sentence 
 human-readable paragraph summarizing the stock's recent performance and trend. 
 Be concise, factual, and clear. Do not use bullet points.
@@ -108,7 +112,7 @@ popular_stocks = {
 selected_stock_names = st.sidebar.multiselect(
     "Choose Popular Stocks",
     list(popular_stocks.keys()),
-    default=[list(popular_stocks.keys())[0]],
+    default=[],
 )
 
 tickers = [popular_stocks[name] for name in selected_stock_names]
@@ -120,14 +124,33 @@ company_input = st.sidebar.text_input("Type a company name (e.g. Tata Motors)")
 search_clicked = st.sidebar.button("Search Ticker")
 
 if search_clicked and company_input.strip():
-    with st.spinner(f"Finding ticker for '{company_input}'..."):
-        found_ticker = get_ticker_from_llm(company_input.strip())
-    if found_ticker:
-        st.sidebar.success(f"Found: **{found_ticker}**")
-        if found_ticker not in tickers:
-            tickers.append(found_ticker)
+    if company_input.strip() != st.session_state.last_search:
+        with st.spinner(f"Finding ticker for '{company_input}'..."):
+            found_ticker = get_ticker_from_llm(company_input.strip())
+        if found_ticker:
+            st.session_state.last_search = company_input.strip()
+            if found_ticker not in st.session_state.llm_tickers:
+                st.session_state.llm_tickers.append(found_ticker)
+            st.sidebar.success(f"Found: **{found_ticker}**")
+        else:
+            st.sidebar.error("Could not find ticker. Try a different name.")
     else:
-        st.sidebar.error("Could not find ticker. Try a different name.")
+        # already searched, just show result
+        if st.session_state.llm_tickers:
+            st.sidebar.success(f"Found: **{st.session_state.llm_tickers[-1]}**")
+
+# Show all LLM tickers added so far with remove buttons
+if st.session_state.llm_tickers:
+    st.sidebar.markdown("**AI Found Tickers:**")
+    for t in st.session_state.llm_tickers.copy():
+        col1, col2 = st.sidebar.columns([3, 1])
+        col1.markdown(f"✅ `{t}`")
+        if col2.button("✕", key=f"remove_{t}"):
+            st.session_state.llm_tickers.remove(t)
+            st.rerun()
+
+# Merge all tickers: popular + llm + custom
+tickers.extend(st.session_state.llm_tickers)
 
 # CUSTOM TICKERS
 st.sidebar.markdown("---")
@@ -179,7 +202,7 @@ def get_fx_rate(from_currency: str, period_str: str) -> pd.Series:
 
 
 @st.cache_data(ttl=300)
-def load_data(ticker_list: list, time_period: str):
+def load_data(ticker_list: tuple, time_period: str):
     data_dict = {}
     failed = []
     currencies = {}
@@ -239,7 +262,8 @@ def load_data(ticker_list: list, time_period: str):
     return data_dict, failed, currencies
 
 
-data, failed_tickers, stock_currencies = load_data(tickers, period)
+# Pass tickers as tuple so st.cache_data can hash it
+data, failed_tickers, stock_currencies = load_data(tuple(tickers), period)
 
 if failed_tickers:
     st.error(
