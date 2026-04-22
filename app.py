@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import logging
+import time
 
 logging.getLogger("streamlit").setLevel(logging.ERROR)
 
@@ -13,6 +14,13 @@ st.set_page_config(page_title="Stock Dashboard", layout="wide")
 #TITLE
 st.markdown("<h1 style='text-align:center;'>Live Stock Market Dashboard</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align:center; color:gray;'>Real-Time Market Intelligence</p>", unsafe_allow_html=True)
+
+# REFRESH BUTTON
+col_refresh = st.columns([4, 1, 4])[1]
+with col_refresh:
+    if st.button("🔄 Refresh Data"):
+        st.cache_data.clear()
+        st.rerun()
 
 #SIDEBAR
 st.sidebar.header("Stock Settings")
@@ -55,7 +63,7 @@ period = st.sidebar.selectbox(
     ["1mo", "3mo", "6mo", "1y", "2y", "5y"],
 )
 
-# Supported conversion currencies (add more as needed)
+# Supported conversion currencies
 CONVERTIBLE_CURRENCIES = {"USD", "GBP", "EUR", "JPY", "HKD", "SGD"}
 
 #DATA FETCH
@@ -73,18 +81,22 @@ def get_fx_rate(from_currency: str, period_str: str) -> pd.Series:
     symbol = fx_symbol_map.get(from_currency)
     if not symbol:
         return None
-    try:
-        fx = yf.Ticker(symbol)
-        series = fx.history(period=period_str)["Close"]
-        return series if not series.empty else None
-    except Exception:
-        return None
+    for attempt in range(3):
+        try:
+            fx = yf.Ticker(symbol)
+            series = fx.history(period=period_str)["Close"]
+            if not series.empty:
+                return series
+            time.sleep(2)
+        except Exception:
+            time.sleep(2)
+    return None
 
 
 @st.cache_data(ttl=300)
 def load_data(ticker_list: list, time_period: str):
     """
-    Load OHLCV data for each ticker.
+    Load OHLCV data for each ticker with retry logic.
     Converts price to INR if the stock trades in a foreign currency.
 
     Returns:
@@ -95,48 +107,63 @@ def load_data(ticker_list: list, time_period: str):
     data_dict = {}
     failed = []
     currencies = {}
-    fx_cache = {}  # currency -> pd.Series
+    fx_cache = {}
 
     for symbol in ticker_list:
-        try:
-            stock = yf.Ticker(symbol)
-            df = stock.history(period=time_period)
-
-            if df.empty:
-                failed.append(symbol)
-                continue
-
-            # Safely retrieve currency; default to INR for .NS tickers
+        success = False
+        for attempt in range(3):  # retry up to 3 times
             try:
-                info = stock.fast_info          # faster than .info
-                currency = getattr(info, "currency", None) or "INR"
-            except Exception:
-                currency = "INR" if symbol.endswith(".NS") else "USD"
+                stock = yf.Ticker(symbol)
+                df = stock.history(period=time_period)
 
-            currencies[symbol] = currency
+                if df.empty:
+                    if attempt < 2:
+                        time.sleep(2)
+                        continue
+                    failed.append(symbol)
+                    break
 
-            # Convert to INR if needed
-            if currency != "INR" and currency in CONVERTIBLE_CURRENCIES:
-                if currency not in fx_cache:
-                    fx_cache[currency] = get_fx_rate(currency, time_period)
+                # Safely retrieve currency
+                try:
+                    info = stock.fast_info
+                    currency = getattr(info, "currency", None) or "INR"
+                except Exception:
+                    currency = "INR" if symbol.endswith(".NS") else "USD"
 
-                fx_series = fx_cache[currency]
+                currencies[symbol] = currency
 
-                if fx_series is not None and not fx_series.empty:
-                    fx_reindexed = fx_series.reindex(df.index, method="ffill").bfill()
-                    for col in ["Open", "High", "Low", "Close"]:
-                        df[col] = df[col] * fx_reindexed
+                # Convert to INR if needed
+                if currency != "INR" and currency in CONVERTIBLE_CURRENCIES:
+                    if currency not in fx_cache:
+                        fx_cache[currency] = get_fx_rate(currency, time_period)
+
+                    fx_series = fx_cache[currency]
+                    if fx_series is not None and not fx_series.empty:
+                        fx_reindexed = fx_series.reindex(df.index, method="ffill").bfill()
+                        for col in ["Open", "High", "Low", "Close"]:
+                            df[col] = df[col] * fx_reindexed
+                    else:
+                        st.warning(
+                            f"⚠️ Could not fetch {currency}→INR rate for **{symbol}**. "
+                            "Prices shown in original currency."
+                        )
+
+                data_dict[symbol] = df
+                success = True
+                break  # success, exit retry loop
+
+            except Exception as e:
+                err_str = str(e).lower()
+                if "too many requests" in err_str or "rate" in err_str or "429" in err_str:
+                    if attempt < 2:
+                        time.sleep(3)  # wait before retry
+                    else:
+                        failed.append(symbol)
+                        st.warning(f"⚠️ **{symbol}** is rate-limited by Yahoo Finance. Try refreshing in a moment.")
                 else:
-                    st.warning(
-                        f"⚠️ Could not fetch {currency}→INR rate for **{symbol}**. "
-                        "Prices shown in original currency."
-                    )
-
-            data_dict[symbol] = df
-
-        except Exception as e:
-            failed.append(symbol)
-            st.warning(f"⚠️ Failed to load **{symbol}**: {e}")
+                    failed.append(symbol)
+                    st.warning(f"⚠️ Failed to load **{symbol}**: {e}")
+                    break
 
     return data_dict, failed, currencies
 
@@ -146,14 +173,13 @@ data, failed_tickers, stock_currencies = load_data(tickers, period)
 # Notify user about any completely failed tickers
 if failed_tickers:
     st.error(
-        f"Could not load data for the following ticker(s): "
-        f"**{', '.join(failed_tickers)}**. "
-        "Please check that the symbols are correct."
+        f"Could not load data for: **{', '.join(failed_tickers)}**. "
+        "Yahoo Finance may be rate-limiting. Click **🔄 Refresh Data** above to retry."
     )
 
 #DASHBOARD
 if not data:
-    st.error("No valid data to display. Please check your ticker selection.")
+    st.error("No valid data to display. Yahoo Finance may be rate-limiting. Click **🔄 Refresh Data** above to retry.")
     st.stop()
 
 elif len(data) == 1:
@@ -181,7 +207,7 @@ elif len(data) == 1:
 
     st.markdown("---")
 
-    #Candlestick Chart
+    # Candlestick Chart
     st.subheader("Price Action")
     fig_candle = go.Figure(
         data=[
@@ -220,7 +246,7 @@ elif len(data) == 1:
     fig_vol = px.bar(df, x=df.index, y="Volume", template="plotly_dark")
     st.plotly_chart(fig_vol, use_container_width=True)
 
-    #Daily Returns
+    # Daily Returns
     st.subheader("Daily Returns (%)")
     fig_ret = px.line(df, x=df.index, y="Daily Return", template="plotly_dark")
     fig_ret.update_layout(yaxis_tickformat=".2%")
@@ -229,7 +255,7 @@ elif len(data) == 1:
 else:
     st.markdown("<h2 style='text-align:center;'>Multi-Stock Comparison</h2>", unsafe_allow_html=True)
 
-    #Metrics Grid
+    # Metrics Grid
     cols = st.columns(min(len(data), 4))
     for i, (ticker, df) in enumerate(data.items()):
         col_idx = i % 4
