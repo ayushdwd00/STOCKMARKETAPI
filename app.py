@@ -5,13 +5,81 @@ import plotly.graph_objects as go
 import plotly.express as px
 import logging
 import time
+import os
+from dotenv import load_dotenv
+from groq import Groq
+
+load_dotenv()  # loads .env locally
 
 logging.getLogger("streamlit").setLevel(logging.ERROR)
 
 # PAGE CONFIG
 st.set_page_config(page_title="Stock Dashboard", layout="wide")
 
-#TITLE
+# GROQ CLIENT — works both locally (.env) and on Streamlit Cloud (secrets)
+api_key = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY")
+if not api_key:
+    st.error("⚠️ GROQ_API_KEY not found. Add it to your .env file (local) or Streamlit Secrets (cloud).")
+    st.stop()
+
+client = Groq(api_key=api_key)
+
+
+def get_ticker_from_llm(company_name: str) -> str:
+    """Use Groq LLM to find the correct stock ticker for a company name."""
+    prompt = f"""You are a stock market expert. Given a company name, return ONLY the correct stock ticker symbol.
+Rules:
+- For Indian stocks: use NSE format with .NS suffix (e.g. RELIANCE.NS, TCS.NS, INFY.NS, TATAMOTORS.NS)
+- For US stocks: use standard ticker (e.g. AAPL, TSLA, MSFT)
+- Return ONLY the ticker symbol, nothing else. No explanation, no punctuation, no extra text.
+
+Company: {company_name}
+Ticker:"""
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=20,
+            temperature=0,
+        )
+        ticker = response.choices[0].message.content.strip().upper()
+        return ticker
+    except Exception as e:
+        st.warning(f"⚠️ Ticker search failed: {e}")
+        return None
+
+
+def get_ai_summary(ticker: str, latest_close: float, period_high: float,
+                   period_low: float, avg_volume: float, pct_change: float,
+                   last_10_closes: list, period: str) -> str:
+    """Use Groq LLM to generate a short stock summary paragraph."""
+    prompt = f"""You are a financial analyst. Based on the following stock data, write a 3-4 sentence 
+human-readable paragraph summarizing the stock's recent performance and trend. 
+Be concise, factual, and clear. Do not use bullet points.
+
+Stock: {ticker}
+Period: {period}
+Latest Close Price: {latest_close:.2f}
+Period High: {period_high:.2f}
+Period Low: {period_low:.2f}
+Average Volume: {avg_volume:,.0f}
+Price Change: {pct_change:+.2f}%
+Last 10 Closing Prices: {', '.join([f'{p:.2f}' for p in last_10_closes])}
+
+Summary:"""
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=200,
+            temperature=0.5,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Could not generate summary: {e}"
+
+
+# TITLE
 st.markdown("<h1 style='text-align:center;'>Live Stock Market Dashboard</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align:center; color:gray;'>Real-Time Market Intelligence</p>", unsafe_allow_html=True)
 
@@ -22,7 +90,7 @@ with col_refresh:
         st.cache_data.clear()
         st.rerun()
 
-#SIDEBAR
+# SIDEBAR
 st.sidebar.header("Stock Settings")
 
 popular_stocks = {
@@ -45,8 +113,25 @@ selected_stock_names = st.sidebar.multiselect(
 
 tickers = [popular_stocks[name] for name in selected_stock_names]
 
-custom_tickers = st.sidebar.text_input("Or Enter Custom Tickers (comma-separated)")
+# SMART TICKER SEARCH
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔍 Search by Company Name")
+company_input = st.sidebar.text_input("Type a company name (e.g. Tata Motors)")
+search_clicked = st.sidebar.button("Search Ticker")
 
+if search_clicked and company_input.strip():
+    with st.spinner(f"Finding ticker for '{company_input}'..."):
+        found_ticker = get_ticker_from_llm(company_input.strip())
+    if found_ticker:
+        st.sidebar.success(f"Found: **{found_ticker}**")
+        if found_ticker not in tickers:
+            tickers.append(found_ticker)
+    else:
+        st.sidebar.error("Could not find ticker. Try a different name.")
+
+# CUSTOM TICKERS
+st.sidebar.markdown("---")
+custom_tickers = st.sidebar.text_input("Or Enter Custom Tickers (comma-separated)")
 if custom_tickers:
     custom_list = [t.strip().upper() for t in custom_tickers.split(",") if t.strip()]
     tickers.extend(custom_list)
@@ -55,7 +140,7 @@ if custom_tickers:
 tickers = list(dict.fromkeys(tickers))
 
 if not tickers:
-    st.warning("Please select at least one stock.")
+    st.warning("Please select or search at least one stock.")
     st.stop()
 
 period = st.sidebar.selectbox(
@@ -66,10 +151,10 @@ period = st.sidebar.selectbox(
 # Supported conversion currencies
 CONVERTIBLE_CURRENCIES = {"USD", "GBP", "EUR", "JPY", "HKD", "SGD"}
 
-#DATA FETCH
+
+# DATA FETCH
 @st.cache_data(ttl=300)
 def get_fx_rate(from_currency: str, period_str: str) -> pd.Series:
-    """Fetch close prices for a currency pair against INR."""
     fx_symbol_map = {
         "USD": "INR=X",
         "GBP": "GBPINR=X",
@@ -95,23 +180,13 @@ def get_fx_rate(from_currency: str, period_str: str) -> pd.Series:
 
 @st.cache_data(ttl=300)
 def load_data(ticker_list: list, time_period: str):
-    """
-    Load OHLCV data for each ticker with retry logic.
-    Converts price to INR if the stock trades in a foreign currency.
-
-    Returns:
-        data_dict  : {symbol: DataFrame}
-        failed     : list of symbols that could not be loaded
-        currencies : {symbol: original_currency}
-    """
     data_dict = {}
     failed = []
     currencies = {}
     fx_cache = {}
 
     for symbol in ticker_list:
-        success = False
-        for attempt in range(3):  # retry up to 3 times
+        for attempt in range(3):
             try:
                 stock = yf.Ticker(symbol)
                 df = stock.history(period=time_period)
@@ -123,7 +198,6 @@ def load_data(ticker_list: list, time_period: str):
                     failed.append(symbol)
                     break
 
-                # Safely retrieve currency
                 try:
                     info = stock.fast_info
                     currency = getattr(info, "currency", None) or "INR"
@@ -132,11 +206,9 @@ def load_data(ticker_list: list, time_period: str):
 
                 currencies[symbol] = currency
 
-                # Convert to INR if needed
                 if currency != "INR" and currency in CONVERTIBLE_CURRENCIES:
                     if currency not in fx_cache:
                         fx_cache[currency] = get_fx_rate(currency, time_period)
-
                     fx_series = fx_cache[currency]
                     if fx_series is not None and not fx_series.empty:
                         fx_reindexed = fx_series.reindex(df.index, method="ffill").bfill()
@@ -149,17 +221,16 @@ def load_data(ticker_list: list, time_period: str):
                         )
 
                 data_dict[symbol] = df
-                success = True
-                break  # success, exit retry loop
+                break
 
             except Exception as e:
                 err_str = str(e).lower()
                 if "too many requests" in err_str or "rate" in err_str or "429" in err_str:
                     if attempt < 2:
-                        time.sleep(3)  # wait before retry
+                        time.sleep(3)
                     else:
                         failed.append(symbol)
-                        st.warning(f"⚠️ **{symbol}** is rate-limited by Yahoo Finance. Try refreshing in a moment.")
+                        st.warning(f"⚠️ **{symbol}** is rate-limited. Click 🔄 Refresh to retry.")
                 else:
                     failed.append(symbol)
                     st.warning(f"⚠️ Failed to load **{symbol}**: {e}")
@@ -170,16 +241,15 @@ def load_data(ticker_list: list, time_period: str):
 
 data, failed_tickers, stock_currencies = load_data(tickers, period)
 
-# Notify user about any completely failed tickers
 if failed_tickers:
     st.error(
         f"Could not load data for: **{', '.join(failed_tickers)}**. "
-        "Yahoo Finance may be rate-limiting. Click **🔄 Refresh Data** above to retry."
+        "Yahoo Finance may be rate-limiting. Click **🔄 Refresh Data** to retry."
     )
 
-#DASHBOARD
+# DASHBOARD
 if not data:
-    st.error("No valid data to display. Yahoo Finance may be rate-limiting. Click **🔄 Refresh Data** above to retry.")
+    st.error("No valid data to display. Click **🔄 Refresh Data** to retry.")
     st.stop()
 
 elif len(data) == 1:
@@ -204,6 +274,23 @@ elif len(data) == 1:
     col2.metric("Highest (Period)", f"{price_unit} {df['Close'].max():,.2f}")
     col3.metric("Lowest (Period)", f"{price_unit} {df['Close'].min():,.2f}")
     col4.metric("Avg Volume", f"{df['Volume'].mean():,.0f}")
+
+    # AI SUMMARY
+    st.markdown("---")
+    st.subheader("📝 AI Summary")
+    with st.spinner("Generating AI summary..."):
+        last_10 = df["Close"].tail(10).tolist()
+        summary = get_ai_summary(
+            ticker=ticker,
+            latest_close=latest_close,
+            period_high=df["Close"].max(),
+            period_low=df["Close"].min(),
+            avg_volume=df["Volume"].mean(),
+            pct_change=day_change_pct,
+            last_10_closes=last_10,
+            period=period,
+        )
+    st.info(summary)
 
     st.markdown("---")
 
