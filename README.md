@@ -4,6 +4,31 @@ An AI-powered real-time stock market dashboard built with **Streamlit**, **yFina
 
 Search any company by name — the AI finds the ticker automatically. Get live charts, technical indicators, and an AI-generated market summary.
 
+## 🚀 Live Demo
+
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://stockmarketapi-ayushdwd.streamlit.app/)
+
+👉 **[https://stockmarketapi-ayushdwd.streamlit.app/](https://stockmarketapi-ayushdwd.streamlit.app/)**
+
+---
+
+## 📸 Screenshots
+
+### 🏠 Dashboard Overview
+![Dashboard Overview](images/preview.png)
+
+### 🤖 AI Summary
+![AI Summary](images/ai_summary.png)
+
+### 🕯️ Price Action (Candlestick Chart)
+![Price Action](images/price_action.png)
+
+### 📊 Trend Indicators (Moving Averages)
+![Trend Indicators](images/trends.png)
+
+### 📉 Daily Returns
+![Daily Returns](images/daily_return.png)
+
 ---
 
 ## ✨ Features
@@ -81,6 +106,7 @@ GROQ_API_KEY = "gsk_xxxxxxxxxxxxxxxx"
 | 🇮🇳 Indian | State Bank of India | SBIN.NS |
 | 🇮🇳 Indian | Zomato | ZOMATO.NS |
 | 🇮🇳 Indian | Bajaj Finance | BAJFINANCE.NS |
+| 🇮🇳 Indian | Wipro | WIPRO.NS |
 | 🇺🇸 US | Google | GOOGL |
 | 🇺🇸 US | Netflix | NFLX |
 | 🇺🇸 US | Palantir | PLTR |
@@ -95,6 +121,7 @@ stockmarketapi/
 ├── requirements.txt    # Python dependencies
 ├── .env                # Local API keys (gitignored)
 ├── .gitignore          # Ignores .env and secrets
+├── images/             # Screenshots for README
 └── README.md           # This file
 ```
 
@@ -104,7 +131,7 @@ stockmarketapi/
 
 - Yahoo Finance may rate-limit requests on shared IPs — click **🔄 Refresh Data** to retry
 - AI ticker search requires a valid Groq API key
-- Some very small-cap or newly listed stocks may not be available on yFinance
+- 50-day and 200-day MAs require sufficient historical data (use 3mo+ period)
 
 ---
 
