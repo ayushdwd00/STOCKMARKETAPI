@@ -34,12 +34,13 @@ Search any company by name — the AI finds the ticker automatically. Get live c
 ## ✨ Features
 
 - 🤖 **AI Ticker Search** — Type any company name (e.g. "Tata Motors", "Netflix") and Groq LLM finds the correct ticker symbol automatically
+- ⚡ **Seamless Search & Compare UX** — Use a single intuitive search bar to find your primary stock, switch it on the fly, or add multiple stocks for side-by-side comparison without cluttering the UI
 - 📝 **AI Stock Summary** — LLM generates a 3-4 sentence analysis of the stock's recent performance and trend
 - 🕯️ **Candlestick Charts** — Interactive price action visualization
 - 📊 **Moving Averages** — 50-day and 200-day trend indicators
 - 📉 **Daily Returns** — Percentage return chart over time
 - 📦 **Volume Analysis** — Trading volume bar chart
-- 🌍 **Multi-Stock Comparison** — Normalized performance and absolute price comparison
+- 🌍 **Multi-Stock Comparison** — Normalized performance, absolute price correlation heatmaps, and daily returns comparison
 - 💱 **INR Conversion** — Foreign stocks automatically converted to Indian Rupees
 - 🔄 **Auto Retry** — Handles Yahoo Finance rate limiting with smart retry logic
 
