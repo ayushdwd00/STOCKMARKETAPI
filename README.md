@@ -4,6 +4,12 @@ An AI-powered real-time stock market dashboard built with **Streamlit**, **yFina
 
 Search any company by name — the AI finds the ticker automatically. Get live charts, technical indicators, and an AI-generated market summary.
 
+## 🚀 Live Demo
+
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://stockmarketapi-ayushdwd.streamlit.app/)
+
+👉 **[https://stockmarketapi-ayushdwd.streamlit.app/](https://stockmarketapi-ayushdwd.streamlit.app/)**
+
 ---
 
 ## 📸 Screenshots
@@ -83,7 +89,7 @@ streamlit run app.py
 ## ☁️ Deploy on Streamlit Cloud
 
 1. Push your code to GitHub (`.env` is gitignored — never committed)
-2. Go to [(https://share.streamlit.io](https://stockmarketapi-ayushdwd.streamlit.app/)) and connect your repo
+2. Go to [share.streamlit.io](https://share.streamlit.io) and connect your repo
 3. Go to **App Settings → Secrets** and add:
 ```toml
 GROQ_API_KEY = "gsk_xxxxxxxxxxxxxxxx"
