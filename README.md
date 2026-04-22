@@ -83,7 +83,7 @@ streamlit run app.py
 ## ☁️ Deploy on Streamlit Cloud
 
 1. Push your code to GitHub (`.env` is gitignored — never committed)
-2. Go to [share.streamlit.io](https://share.streamlit.io) and connect your repo
+2. Go to [(https://share.streamlit.io](https://stockmarketapi-ayushdwd.streamlit.app/)) and connect your repo
 3. Go to **App Settings → Secrets** and add:
 ```toml
 GROQ_API_KEY = "gsk_xxxxxxxxxxxxxxxx"
